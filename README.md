@@ -31,7 +31,8 @@ scripts/              package a plugin, check a manifest, write the index   (to 
   | `1.2.0` | stable | everyone |
   | `1.3.0-beta.2`, `-rc.1` | beta | hubs on beta or alpha |
   | `1.3.0-alpha.1` | alpha | hubs on alpha |
-  | `1.3.0-dev.7` | dev | **only** a hub whose own configuration turns developer builds on for this source; listed in `dev/index.json`, never in `index.json` |
+
+  There is no `dev` channel. Work not ready for anyone is a directory with no tag; internal builds live in the development repository, `regulus-plugins-dev` *(proposed)*, which has this same layout and which only the maintainer adds as a source. A plugin that is ready is moved here.
 
 - **A yanked version stays downloadable.** Never delete a release or a tag: rollbacks and pinned hubs depend on them.
 - **`audience` defaults to `admin`.** A plugin that does not say who it is for is never shown to ordinary users. `audience` is a hint for the dashboard; what a user may do is decided by permissions, checked by the hub.

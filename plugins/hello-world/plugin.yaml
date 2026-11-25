@@ -6,7 +6,7 @@
 # refuses unknown keys. The commented ones are in the design
 # (docs/plugins/store.md in Regulus) and are not accepted yet.
 id: hello-world
-version: 0.1.0-dev.1
+version: 0.1.0-alpha.1
 name: Hello world
 description: Does nothing useful. For testing the plugin store.
 api: 1
