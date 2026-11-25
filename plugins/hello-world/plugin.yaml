@@ -1,0 +1,26 @@
+# The test plugin: it does nothing useful on purpose. It exists to try the plugin
+# store end to end (index, install, update, rollback, removal, a requirement
+# between two plugins) and is removed when the first real plugin is released.
+#
+# Only keys the Regulus manifest parser accepts today may be uncommented: it
+# refuses unknown keys. The commented ones are in the design
+# (docs/plugins/store.md in Regulus) and are not accepted yet.
+id: hello-world
+version: 0.1.0-dev.1
+name: Hello world
+description: Does nothing useful. For testing the plugin store.
+api: 1
+requires: ">=0.4.0-alpha.1"
+components:
+  agent:
+    command: bin/hello-world
+  hub:
+    command: bin/hello-world
+permissions:
+  - id: hello-world.greet
+    description: Say hello.
+# Proposed, not accepted yet:
+# kind: integration
+# audience: admin
+# provides:
+#   - hello.greet@1
