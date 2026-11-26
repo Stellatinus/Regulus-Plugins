@@ -49,6 +49,8 @@ func TestManifestRules(t *testing.T) {
 		{"node tab", uiTab("disks", "Disks", "Dischi"), ""},
 		{"node tab without Italian title", uiTab("disks", "Disks", ""), ""},
 		{"node tab without English title", uiTab("disks", "", "Dischi"), "title.en"},
+		{"node tab title too long", uiTab("disks", strings.Repeat("x", 25), ""), "longer than 24"},
+		{"node tab title with a control character", uiTab("disks", "\"a\\tb\"", ""), "control characters"},
 		{"node tab with a bad id", uiTab("Disks", "Disks", ""), "node_tab.id"},
 		{"node tab with a short id", uiTab("d", "Disks", ""), "node_tab.id"},
 		{"node tab with another language", strings.Replace(uiTab("disks", "Disks", ""), "        en: Disks\n", "        en: Disks\n        fr: Disques\n", 1), "field fr not found"},

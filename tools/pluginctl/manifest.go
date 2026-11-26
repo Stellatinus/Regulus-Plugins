@@ -16,11 +16,16 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
 
 const maxManifest = 64 << 10
+
+// maxTabTitle copies Regulus (internal/plugin/manifest.go): a tab label, in characters.
+const maxTabTitle = 24
 
 type manifest struct {
 	ID          string       `yaml:"id"`
@@ -148,6 +153,16 @@ func (m manifest) validate() error {
 			}
 			if strings.TrimSpace(t.Title.EN) == "" {
 				return errors.New("components.ui.node_tab.title.en must not be empty")
+			}
+			for lang, title := range map[string]string{"en": t.Title.EN, "it": t.Title.IT} {
+				if utf8.RuneCountInString(title) > maxTabTitle {
+					return fmt.Errorf("components.ui.node_tab.title.%s is longer than %d characters", lang, maxTabTitle)
+				}
+				for _, r := range title {
+					if unicode.IsControl(r) {
+						return fmt.Errorf("components.ui.node_tab.title.%s must not contain control characters", lang)
+					}
+				}
 			}
 		}
 	}
