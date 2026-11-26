@@ -4,6 +4,11 @@
 # Usage: scripts/test-changes.sh
 set -eu
 
+# changes.sh writes to $GITHUB_OUTPUT when it is set, and on a GitHub runner it
+# always is, so the test would capture nothing: it reads stdout (the first run
+# of this test in CI failed on exactly this).
+unset GITHUB_OUTPUT
+
 here=$(cd "$(dirname "$0")" && pwd)
 failures=0
 n=0
