@@ -46,7 +46,21 @@ type program struct {
 }
 
 type uiModule struct {
-	Module string `yaml:"module"`
+	Module  string   `yaml:"module"`
+	NodeTab *nodeTab `yaml:"node_tab"`
+}
+
+// nodeTab is the tab a plugin adds to the node window (Regulus accepts it as
+// components.ui.node_tab). Only English and Italian have titles: the dashboard
+// is bilingual and an unknown language key is refused like any unknown key.
+type nodeTab struct {
+	ID    string   `yaml:"id"`
+	Title tabTitle `yaml:"title"`
+}
+
+type tabTitle struct {
+	EN string `yaml:"en"`
+	IT string `yaml:"it"`
 }
 
 type permission struct {
@@ -128,6 +142,14 @@ func (m manifest) validate() error {
 		if !strings.HasSuffix(c.UI.Module, ".js") {
 			return errors.New("components.ui.module must be a .js module")
 		}
+		if t := c.UI.NodeTab; t != nil {
+			if len(t.ID) < 2 || len(t.ID) > 40 || !idRE.MatchString(t.ID) {
+				return fmt.Errorf("components.ui.node_tab.id %q must be 2 to 40 lower-case letters, digits and single hyphens, starting with a letter", t.ID)
+			}
+			if strings.TrimSpace(t.Title.EN) == "" {
+				return errors.New("components.ui.node_tab.title.en must not be empty")
+			}
+		}
 	}
 	seen := map[string]bool{}
 	for _, p := range m.Permissions {
@@ -183,7 +205,7 @@ func checkPlugin(dir, release string) []string {
 	if m.ID != filepath.Base(filepath.Clean(dir)) {
 		add("the directory is not named after the id %q", m.ID)
 	}
-	for _, name := range []string{"README.md", "CHANGELOG.md"} {
+	for _, name := range []string{"README.md", "CHANGELOG.md", "decisions.md"} {
 		if st, err := os.Stat(filepath.Join(dir, name)); err != nil || !st.Mode().IsRegular() {
 			add("%s is missing", name)
 		}

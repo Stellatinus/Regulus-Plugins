@@ -4,7 +4,8 @@ name: CI
 #   changes    works out in seconds which files changed (scripts/changes.sh)
 #   tooling    the tests of scripts/ and tools/, actionlint, and that every
 #              action is pinned to a commit; runs when tooling changed
-#   manifests  plugin.yaml, README.md and CHANGELOG.md of each plugin that changed
+#   manifests  plugin.yaml, README.md, CHANGELOG.md and decisions.md of each plugin
+#              that changed, the list of plugins, and the node tests of its UI module
 #   build      go vet, go test -race and a cross build of each plugin that has
 #              code and whose code changed
 #   All checks one result, for the repository's required check: it fails if any
@@ -114,6 +115,13 @@ jobs:
           # shellcheck disable=SC2086
           "$RUNNER_TEMP/pluginctl" check $dirs
           sh scripts/check-plugin-list.sh
+      - name: Tests of the UI modules (node --test)
+        env:
+          PLUGINS: ${{ needs.changes.outputs.plugins }}
+        run: |
+          set -eu
+          # shellcheck disable=SC2046
+          sh scripts/test-ui.sh $(printf '%s' "$PLUGINS" | jq -r '.[]')
 
   build:
     name: Build and test the plugins that have code

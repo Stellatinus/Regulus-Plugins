@@ -1,6 +1,7 @@
 #!/bin/sh
 # Tests scripts/package-plugin.sh with plugins made on the fly: one written in
-# Go, one that is a script, and the ones that must be refused.
+# Go, one that is a script, one that is only a UI module, and the ones that must
+# be refused.
 #
 # Usage: scripts/test-package-plugin.sh
 # shellcheck disable=SC2015 # ok always succeeds, so `A && ok || bad` is an if-else here
@@ -35,6 +36,13 @@ printf '#!/bin/sh\nexit 0\n' >plugins/scriptpl/bin/run
 chmod +x plugins/scriptpl/bin/run
 echo "export default {}" >plugins/scriptpl/ui/w.js
 
+# A UI-only plugin: no program, only a ui module (and a node tab in the manifest).
+mkdir -p plugins/uionly/ui plugins/uionly/test
+printf 'id: uionly\nversion: 0.1.0-alpha.1\nname: uionly\napi: 1\ncomponents:\n  ui:\n    module: ui/w.js\n    node_tab:\n      id: uionly\n      title:\n        en: Only\n' >plugins/uionly/plugin.yaml
+echo "export default {}" >plugins/uionly/ui/w.js
+echo "tests are not packed" >plugins/uionly/test/w.test.js
+echo "{}" >plugins/uionly/package.json
+
 # A plugin with only a manifest: must be refused.
 mkdir -p plugins/onlymanifest
 manifest onlymanifest 0.1.0 bin/onlymanifest >plugins/onlymanifest/plugin.yaml
@@ -64,6 +72,13 @@ GOOS=linux GOARCH=arm64 "$here/package-plugin.sh" plugins/gopl dist >/dev/null 2
 
 GOOS=linux GOARCH=amd64 "$here/package-plugin.sh" plugins/scriptpl dist >/dev/null 2>&1 && ok "a script plugin is packed" || bad "a script plugin is packed"
 tar -tzf dist/scriptpl_1.2.3-beta.1_linux_amd64.tar.gz | sort | tr '\n' ' ' | grep -q 'scriptpl/bin/run scriptpl/plugin.yaml scriptpl/ui/ scriptpl/ui/w.js' && ok "a script and a ui module are in the archive" || bad "a script and a ui module are in the archive"
+
+GOOS=linux GOARCH=amd64 "$here/package-plugin.sh" plugins/uionly dist >/dev/null 2>&1 && ok "a UI-only plugin is packed" || bad "a UI-only plugin is packed"
+tar -tzf dist/uionly_0.1.0-alpha.1_linux_amd64.tar.gz | sort | tr '\n' ' ' | grep -q '^uionly/ uionly/plugin.yaml uionly/ui/ uionly/ui/w.js $' && ok "a UI-only archive holds the manifest and the module, and nothing else" || bad "a UI-only archive layout ($(tar -tzf dist/uionly_0.1.0-alpha.1_linux_amd64.tar.gz | tr '\n' ' '))"
+# Nothing in it depends on the machine: both architectures give the same bytes, so
+# the index can offer the same package for linux/amd64 and linux/arm64.
+GOOS=linux GOARCH=arm64 "$here/package-plugin.sh" plugins/uionly dist >/dev/null 2>&1
+[ "$(sha256sum <dist/uionly_0.1.0-alpha.1_linux_amd64.tar.gz)" = "$(sha256sum <dist/uionly_0.1.0-alpha.1_linux_arm64.tar.gz)" ] && ok "a UI-only package is identical for amd64 and arm64" || bad "a UI-only package is identical for amd64 and arm64"
 
 for p in onlymanifest noexec escape wrongdir; do
 	if GOOS=linux GOARCH=amd64 "$here/package-plugin.sh" "plugins/$p" refused >/dev/null 2>err.txt; then

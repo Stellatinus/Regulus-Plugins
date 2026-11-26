@@ -279,7 +279,7 @@ func TestReadYanked(t *testing.T) {
 func TestRunCommands(t *testing.T) {
 	root := t.TempDir()
 	var out, errb bytes.Buffer
-	dir := writePlugin(t, root, "hello-world", goodManifest, map[string]string{"README.md": "x", "CHANGELOG.md": "## 0.1.0-alpha.1\n\nFirst.\n"})
+	dir := writePlugin(t, root, "hello-world", goodManifest, map[string]string{"README.md": "x", "CHANGELOG.md": "## 0.1.0-alpha.1\n\nFirst.\n", "decisions.md": "x"})
 	if code := run([]string{"check", dir}, &out, &errb); code != 0 {
 		t.Fatalf("check = %d: %s", code, errb.String())
 	}
