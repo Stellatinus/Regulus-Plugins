@@ -46,6 +46,15 @@ func TestManifestRules(t *testing.T) {
 		{"command leaves the directory", strings.Replace(goodManifest, "command: bin/hello-world\n  hub", "command: ../x\n  hub", 1), "clean path"},
 		{"unclean command", strings.Replace(goodManifest, "command: bin/hello-world\n  hub", "command: ./bin/x\n  hub", 1), "clean path"},
 		{"ui module not js", "id: ui-only\nversion: 0.1.0\nname: x\napi: 1\ncomponents:\n  ui:\n    module: ui/w.txt\n", ".js"},
+		{"node tab", uiTab("disks", "Disks", "Dischi"), ""},
+		{"node tab without Italian title", uiTab("disks", "Disks", ""), ""},
+		{"node tab without English title", uiTab("disks", "", "Dischi"), "title.en"},
+		{"node tab title too long", uiTab("disks", strings.Repeat("x", 25), ""), "longer than 24"},
+		{"node tab title with a control character", uiTab("disks", "\"a\\tb\"", ""), "control characters"},
+		{"node tab with a bad id", uiTab("Disks", "Disks", ""), "node_tab.id"},
+		{"node tab with a short id", uiTab("d", "Disks", ""), "node_tab.id"},
+		{"node tab with another language", strings.Replace(uiTab("disks", "Disks", ""), "        en: Disks\n", "        en: Disks\n        fr: Disques\n", 1), "field fr not found"},
+		{"two node tabs", uiTab("disks", "Disks", "") + "    node_tab:\n      id: two\n", "already defined"},
 		{"permission without the id", strings.Replace(goodManifest, "hello-world.greet", "other.greet", 1), "must start with the plugin id"},
 		{"permission without description", strings.Replace(goodManifest, "Say hello.", "''", 1), "needs a description"},
 		{"permission twice", goodManifest + "  - id: hello-world.greet\n    description: again\n", "listed twice"},
@@ -62,6 +71,22 @@ func TestManifestRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+// uiTab is a UI-only manifest with a node tab; an empty title leaves the key out.
+func uiTab(id, en, it string) string {
+	y := "id: ui-only\nversion: 0.1.0\nname: x\napi: 1\ncomponents:\n  ui:\n    module: ui/w.js\n    node_tab:\n      id: " + id + "\n"
+	if en == "" && it == "" {
+		return y + "      title: {}\n"
+	}
+	y += "      title:\n"
+	if en != "" {
+		y += "        en: " + en + "\n"
+	}
+	if it != "" {
+		y += "        it: " + it + "\n"
+	}
+	return y
 }
 
 func writePlugin(t *testing.T, root, id, manifestYAML string, files map[string]string) string {
@@ -84,7 +109,7 @@ func writePlugin(t *testing.T, root, id, manifestYAML string, files map[string]s
 func TestCheckPlugin(t *testing.T) {
 	root := t.TempDir()
 	changelog := "# Changelog\n\n## 0.1.0-alpha.1\n\nFirst alpha.\n\n## 0.0.9\n\nOlder.\n"
-	ok := writePlugin(t, root, "hello-world", goodManifest, map[string]string{"README.md": "x", "CHANGELOG.md": changelog})
+	ok := writePlugin(t, root, "hello-world", goodManifest, map[string]string{"README.md": "x", "CHANGELOG.md": changelog, "decisions.md": "x"})
 	if p := checkPlugin(ok, ""); len(p) != 0 {
 		t.Fatalf("a good plugin has problems: %v", p)
 	}
@@ -96,17 +121,17 @@ func TestCheckPlugin(t *testing.T) {
 	if p := checkPlugin(ok, "0.1.0-alpha.2"); len(p) != 1 || !strings.Contains(p[0], "plugin.yaml says version 0.1.0-alpha.1") {
 		t.Fatalf("version mismatch: %v", p)
 	}
-	noNotes := writePlugin(t, root, "no-notes", strings.ReplaceAll(goodManifest, "hello-world", "no-notes"), map[string]string{"README.md": "x", "CHANGELOG.md": "## 0.0.1\n\nx\n"})
+	noNotes := writePlugin(t, root, "no-notes", strings.ReplaceAll(goodManifest, "hello-world", "no-notes"), map[string]string{"README.md": "x", "CHANGELOG.md": "## 0.0.1\n\nx\n", "decisions.md": "x"})
 	if p := checkPlugin(noNotes, "0.1.0-alpha.1"); len(p) != 1 || !strings.Contains(p[0], "no notes") {
 		t.Fatalf("a release without notes: %v", p)
 	}
 
 	// Missing files and a directory not named after the id.
 	bare := writePlugin(t, root, "bare", strings.ReplaceAll(goodManifest, "hello-world", "bare"), map[string]string{})
-	if p := checkPlugin(bare, ""); len(p) != 2 {
-		t.Fatalf("README.md and CHANGELOG.md are missing: %v", p)
+	if p := checkPlugin(bare, ""); len(p) != 3 {
+		t.Fatalf("README.md, CHANGELOG.md and decisions.md are missing: %v", p)
 	}
-	wrong := writePlugin(t, root, "other-dir", goodManifest, map[string]string{"README.md": "x", "CHANGELOG.md": "x"})
+	wrong := writePlugin(t, root, "other-dir", goodManifest, map[string]string{"README.md": "x", "CHANGELOG.md": "x", "decisions.md": "x"})
 	if p := checkPlugin(wrong, ""); len(p) != 1 || !strings.Contains(p[0], "not named after the id") {
 		t.Fatalf("directory name: %v", p)
 	}

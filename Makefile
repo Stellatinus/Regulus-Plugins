@@ -8,11 +8,13 @@ test:
 	sh scripts/test-changes.sh
 	sh scripts/test-plugin-version.sh
 	sh scripts/test-package-plugin.sh
+	sh scripts/test-ui.sh
 
 # Manifest, README.md and CHANGELOG.md of every plugin.
 check:
-	cd tools/pluginctl && go run . check $(addprefix ../../,$(wildcard plugins/*))
+	cd tools/pluginctl && go run . check $(addprefix ../../,$(wildcard plugins/*/))
 	cd tools/pluginctl && go run . check-yanked ../../yanked.txt
+	sh scripts/check-plugin-list.sh
 
 # Needs actionlint and shellcheck on the PATH.
 lint:

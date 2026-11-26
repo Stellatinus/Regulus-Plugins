@@ -20,7 +20,7 @@
 #
 # A document is any *.md, LICENSE*, .gitignore, the issue templates and the pull
 # request template. A *.md inside a plugin still makes that plugin be checked,
-# because its README.md and CHANGELOG.md are part of the check, but it is not
+# because its README.md, CHANGELOG.md and decisions.md are part of the check, but it is not
 # code. Anything unknown counts as tooling, so a new kind of file is never
 # skipped by mistake. Run it from the root of the repository.
 set -eu
