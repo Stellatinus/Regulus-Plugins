@@ -8,6 +8,7 @@ The plugins of [Regulus](https://github.com/Stellatinus/Regulus), and **nothing 
 
 ```
 plugins/
+  README.md           the list of all plugins, drafts included
   <id>/               one directory per plugin, named after its id
     plugin.yaml       the manifest (docs/plugins/manifest.md in Regulus)
     README.md         what it does, what it needs, how to try it
@@ -22,9 +23,10 @@ yanked.txt            versions that are yanked (hidden from installs, still list
 
 ## Rules
 
-- **A directory is a plugin.** No code shared between plugins: each builds, is versioned and is released alone. Shared code belongs in Regulus' SDK.
+- **A directory is a plugin.** Every plugin, a draft included, is listed in [`plugins/README.md`](plugins/README.md) and has its own `README.md` (CI checks the list). No code shared between plugins: each builds, is versioned and is released alone. Shared code belongs in Regulus' SDK.
 - **`main` is the only long-lived branch.** Work goes in by pull request, one issue each, in English, with Conventional Commits.
 - **Pushing is not publishing. Only a tag publishes.** A plugin with no tag is in no index: that is where a draft or an idea lives. The code is public, but no hub is offered it.
+- **Every plugin has an issue label named after its id, from the day its directory is created, a draft too.** An issue about a plugin carries that label, so it is found and cited by the plugin it is about. Whoever adds `plugins/<id>/` creates the label `<id>` in the same pull request's work (labels are not files; the pull request says it was created).
 - **A tag is `plugin/<id>/v<version>`** and must equal `version` in that plugin's `plugin.yaml`, on a commit of `main` where CI passed. The version is chosen in a pull request (it is a line of `plugin.yaml`); the workflows check that it is exactly the next one of its channel.
 - **Pre-releases are `-alpha.N` and `-beta.N`, numbered from 1, one at a time.** No `-rc`, no `-dev`: the release workflow refuses them (the Regulus client would still read `-rc` as a beta).
 - **The channel comes from the version**, never from a file:
@@ -57,7 +59,7 @@ git tag -l 'plugin/<id>/v*' | sh scripts/plugin-version.sh next <id> alpha minor
 
 To yank a version, add a line to `yanked.txt` by pull request and run **Publish index**. Nothing is ever deleted.
 
-Run what CI runs on the tooling with `make test`, the checks of the plugins with `make check`, and the linters (they need actionlint and shellcheck) with `make lint`.
+Run what CI runs on the tooling with `make test`, the checks of the plugins with `make check` (which also checks the list of plugins), and the linters (they need actionlint and shellcheck) with `make lint`.
 
 ## Repository settings these need (not files; Stellatinus/Regulus-Plugins#7)
 

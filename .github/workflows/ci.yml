@@ -113,6 +113,7 @@ jobs:
           dirs=$(printf '%s' "$PLUGINS" | jq -r '.[] | "plugins/" + .')
           # shellcheck disable=SC2086
           "$RUNNER_TEMP/pluginctl" check $dirs
+          sh scripts/check-plugin-list.sh
 
   build:
     name: Build and test the plugins that have code

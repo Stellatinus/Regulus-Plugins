@@ -1,0 +1,23 @@
+# Disks: the first real plugin. A "Disks" tab in the node window (physical disks,
+# their identity and their moves between servers). See README.md.
+#
+# Only keys the Regulus manifest parser accepts today may be uncommented: it
+# refuses unknown keys. The commented ones are in the design
+# (docs/plugins/store.md in Regulus) and are not accepted yet.
+id: disks
+version: 0.1.0-alpha.1
+name: Disks
+description: Physical disks of each server, their identity and their moves between servers.
+api: 1
+requires: ">=0.4.0-alpha.1"
+components:
+  hub:
+    command: bin/disks
+  ui:
+    module: ui/disks.js
+permissions:
+  - id: disks.read
+    description: See the physical disks of the servers, their serial numbers and their moves.
+# Proposed, not accepted yet:
+# kind: feature
+# audience: admin

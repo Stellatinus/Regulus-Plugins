@@ -11,8 +11,9 @@ test:
 
 # Manifest, README.md and CHANGELOG.md of every plugin.
 check:
-	cd tools/pluginctl && go run . check $(addprefix ../../,$(wildcard plugins/*))
+	cd tools/pluginctl && go run . check $(addprefix ../../,$(wildcard plugins/*/))
 	cd tools/pluginctl && go run . check-yanked ../../yanked.txt
+	sh scripts/check-plugin-list.sh
 
 # Needs actionlint and shellcheck on the PATH.
 lint:
