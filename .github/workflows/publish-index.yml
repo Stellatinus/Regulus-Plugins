@@ -1,0 +1,156 @@
+name: Publish index
+
+# Writes the plugin index (index.json, the format of "The index" in
+# docs/plugins/store.md of Regulus), signs it with Sigstore and publishes it as a
+# static file on GitHub Pages. Every hub that has this repository as a source
+# reads it. It runs:
+#   - when a plugin is released (release-plugin.yml starts it),
+#   - every Monday, so the index is renewed before its 21 days run out,
+#   - by hand (Actions tab, "Run workflow", on main), for example after editing
+#     yanked.txt.
+# A version that is in yanked.txt stays in the index, marked yanked, and stays
+# downloadable: rollbacks and pinned hubs depend on it.
+#
+# Three jobs, because the signing identity is the root of trust of every hub:
+#   build-index  read-only: lists the plugin releases, downloads their small
+#                files (manifest, checksums) and writes index.json; no id-token
+#   sign         runs no build: checks index.json and signs it with the identity
+#                of this workflow at main; needs the `plugin-release` environment
+#   deploy       publishes the two files on GitHub Pages
+#
+# What this repository needs, as settings and not as files (Stellatinus/
+# Regulus-Plugins#7): Pages with "GitHub Actions" as its source, the
+# `plugin-release` environment (required reviewers) and the `github-pages`
+# environment, and a protected main. The signature names this workflow at
+# refs/heads/main: whoever can push to main, or approve the environment, can
+# sign for every hub. The weekly run also waits for the approval of the
+# environment. GitHub switches off scheduled workflows of a repository with no
+# activity for 60 days: after that the index expires unless someone runs this
+# workflow by hand.
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+# No permission at all unless a job asks for it.
+permissions: {}
+
+env:
+  COSIGN_VERSION: v2.6.1
+
+concurrency:
+  group: publish-index
+  cancel-in-progress: false
+
+jobs:
+  build-index:
+    name: Write the index
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run this workflow on main, not on ${GITHUB_REF}."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: tools/pluginctl/go.mod
+          cache-dependency-path: tools/pluginctl/go.sum
+      - name: List the plugin releases and download their small files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate --jq '.[]' |
+            jq -s '[.[] | select(.tag_name | startswith("plugin/"))]' >releases.json
+          echo "$(jq length releases.json) plugin releases"
+          mkdir assets
+          jq -r '.[] | select(.draft | not) | .tag_name' releases.json | while IFS= read -r tag; do
+            dir="assets/$(printf '%s' "$tag" | sed 's|/|__|g')"
+            mkdir -p "$dir"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.sha256' --pattern '*_plugin.yaml' --dir "$dir"
+          done
+      - name: Write and check index.json
+        run: |
+          set -eu
+          (cd tools/pluginctl && go build -o "$RUNNER_TEMP/pluginctl" .)
+          "$RUNNER_TEMP/pluginctl" check-yanked yanked.txt
+          "$RUNNER_TEMP/pluginctl" index -releases releases.json -assets assets -repo "$GITHUB_REPOSITORY" -yanked yanked.txt -o index.json
+          "$RUNNER_TEMP/pluginctl" verify-index index.json
+          cat index.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plugin-index
+          path: index.json
+          if-no-files-found: error
+          retention-days: 7
+
+  sign:
+    name: Sign the index
+    needs: build-index
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Protection rules of this environment are repository settings; without
+    # them it changes nothing.
+    environment: plugin-release
+    permissions:
+      id-token: write # keyless signing with Sigstore
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plugin-index
+          path: index
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+      - name: Check and sign index.json
+        working-directory: index
+        run: |
+          set -eu
+          # What the build job made must be fresh and sound: issued within the
+          # last hour, not expired, valid for at most 90 days (21 are written).
+          jq -e '
+            .format == 1
+            and (.source | type == "string" and length > 0)
+            and (.issued_at | fromdateiso8601) > (now - 3600)
+            and (.expires | fromdateiso8601) > now
+            and ((.expires | fromdateiso8601) - (.issued_at | fromdateiso8601)) <= 90 * 86400
+            and (.plugins | type == "array")' index.json >/dev/null
+          # The hub reads the Sigstore bundle format; cosign 2 writes an older
+          # layout unless asked.
+          cosign sign-blob --yes --new-bundle-format --bundle index.json.sigstore.json index.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-index
+          path: index/
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Publish on GitHub Pages
+    needs: sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write # deploy to Pages
+      id-token: write # Pages checks the deployment comes from this workflow
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-index
+          path: site
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

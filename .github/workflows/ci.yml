@@ -1,0 +1,165 @@
+name: CI
+
+# Checks what a change touches, and nothing else:
+#   changes    works out in seconds which files changed (scripts/changes.sh)
+#   tooling    the tests of scripts/ and tools/, actionlint, and that every
+#              action is pinned to a commit; runs when tooling changed
+#   manifests  plugin.yaml, README.md and CHANGELOG.md of each plugin that changed
+#   build      go vet, go test -race and a cross build of each plugin that has
+#              code and whose code changed
+#   All checks one result, for the repository's required check: it fails if any
+#              job failed or was cancelled, and passes if the others were skipped
+#
+# A change to documents only skips everything heavy. The jobs are NOT matrices:
+# a matrix job skipped by an `if` is reported under its unexpanded name, and a
+# required check with that name would wait for ever. Each job loops over the
+# plugins of the change instead.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Lets a maintainer run CI by hand (Actions tab, "Run workflow").
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push cancels the older run of a pull request, but never a run on
+# main: the release workflow wants "CI passed on this commit", and a cancelled
+# run would block the release of that commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.changes.outputs.docs_only }}
+      tooling: ${{ steps.changes.outputs.tooling }}
+      plugins: ${{ steps.changes.outputs.plugins }}
+      code_plugins: ${{ steps.changes.outputs.code_plugins }}
+      has_plugins: ${{ steps.changes.outputs.has_plugins }}
+      has_code: ${{ steps.changes.outputs.has_code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the change is the difference with the merge base
+          persist-credentials: false
+      - name: Work out what changed
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          sh scripts/changes.sh "$EVENT" "$BASE" "$HEAD"
+          cat "$GITHUB_OUTPUT"
+
+  tooling:
+    name: Tooling (tests, actionlint, pinned actions)
+    needs: changes
+    if: needs.changes.outputs.tooling == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: tools/pluginctl/go.mod
+          cache-dependency-path: tools/pluginctl/go.sum
+      - name: Every action is pinned to a commit
+        run: sh scripts/pin-actions.sh --check
+      - name: actionlint (and ShellCheck, which the runner has)
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+      - name: go vet and go test of pluginctl
+        working-directory: tools/pluginctl
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
+      - name: Tests of the scripts
+        run: |
+          sh scripts/test-changes.sh
+          sh scripts/test-plugin-version.sh
+          sh scripts/test-package-plugin.sh
+      - name: yanked.txt is well formed
+        working-directory: tools/pluginctl
+        run: go run . check-yanked ../../yanked.txt
+
+  manifests:
+    name: Manifests and documents of the plugins
+    needs: changes
+    if: needs.changes.outputs.has_plugins == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: tools/pluginctl/go.mod
+          cache-dependency-path: tools/pluginctl/go.sum
+      - name: Check plugin.yaml, README.md and CHANGELOG.md
+        env:
+          PLUGINS: ${{ needs.changes.outputs.plugins }}
+        run: |
+          set -eu
+          (cd tools/pluginctl && go build -o "$RUNNER_TEMP/pluginctl" .)
+          dirs=$(printf '%s' "$PLUGINS" | jq -r '.[] | "plugins/" + .')
+          # shellcheck disable=SC2086
+          "$RUNNER_TEMP/pluginctl" check $dirs
+
+  build:
+    name: Build and test the plugins that have code
+    needs: changes
+    if: needs.changes.outputs.has_code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Any Go from 1.21 on: each plugin's go.mod says which toolchain it needs
+      # (its `go` and `toolchain` lines), and Go fetches that one itself.
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.24"
+          cache-dependency-path: plugins/*/go.sum
+      - name: go vet, go test -race and a cross build of each plugin
+        env:
+          PLUGINS: ${{ needs.changes.outputs.code_plugins }}
+        run: |
+          set -eu
+          for id in $(printf '%s' "$PLUGINS" | jq -r '.[]'); do
+            echo "::group::$id"
+            (cd "plugins/$id" && go vet ./... && go test -race -count=1 ./...)
+            # The packages Regulus runs: linux, amd64 and arm64.
+            for arch in amd64 arm64; do
+              GOOS=linux GOARCH=$arch sh scripts/package-plugin.sh "plugins/$id" "$RUNNER_TEMP/dist"
+            done
+            echo "::endgroup::"
+          done
+
+  all-checks:
+    name: All checks
+    needs: [changes, tooling, manifests, build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Nothing failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success | skipped) ;;
+              *) echo "::error::a job ended as $r"; exit 1 ;;
+            esac
+          done

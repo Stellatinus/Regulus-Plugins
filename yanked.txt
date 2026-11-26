@@ -1,0 +1,7 @@
+# Versions that are yanked: hidden from new installs and from updates, but still
+# in the index and still downloadable, so a rollback or a pinned hub keeps
+# working. One per line: <plugin id> <version> [why]. A line that names a
+# release that does not exist is an error, so a typo is not silently ignored.
+# Edit this file by pull request, then run "Publish index" (or wait for Monday).
+#
+# hello-world 0.1.0-alpha.1 test plugin removed from the catalog

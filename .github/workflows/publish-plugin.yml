@@ -1,0 +1,110 @@
+name: Release a plugin
+
+# Run by hand from the Actions tab ("Run workflow", on main). The version of a
+# plugin is the one its plugin.yaml says, on main: it is chosen in a pull
+# request, like any change. This workflow only checks that this version is
+# exactly the next one of its channel, tags the commit plugin/<id>/v<version>
+# and starts release-plugin.yml on that tag, which builds and publishes.
+#
+# What to write in plugin.yaml for the next release, from a clone with the tags:
+#   git tag -l 'plugin/<id>/v*' | sh scripts/plugin-version.sh next <id> alpha|beta|stable minor|patch|major
+#
+#   stable  1.2.0          offered to everyone
+#   beta    1.3.0-beta.2   offered to hubs on the beta and alpha channels
+#   alpha   1.3.0-alpha.1  offered to hubs on the alpha channel only
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: Id of the plugin to release (the name of its directory in plugins/)
+        type: string
+        required: true
+
+permissions:
+  contents: write # push the tag
+  actions: write # start the release workflow
+
+concurrency:
+  group: publish-plugin
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Check the version and tag the commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # most of it is waiting for CI
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run this workflow on main, not on ${GITHUB_REF}."
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # all tags
+
+      # Right after a merge, CI on main is usually still running: wait for it
+      # (up to 30 minutes) instead of failing.
+      - name: Check that CI passed on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 60); do
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=1" --jq '.workflow_runs[0] // {} | (.status // "") + " " + (.conclusion // "")')
+            case "$run" in
+              "completed success") echo "CI passed on $GITHUB_SHA."; exit 0 ;;
+              completed*) echo "::error::CI failed on ${GITHUB_SHA} (${run#completed }). Fix main and try again."; exit 1 ;;
+              " ")
+                # A run can take a moment to appear after a push.
+                missing=$((${missing:-0} + 1))
+                if [ "$missing" -ge 6 ]; then
+                  echo "::error::CI has not run on ${GITHUB_SHA}. Run the CI workflow on main and try again when it is green."
+                  exit 1
+                fi
+                run="not started" ;;
+            esac
+            echo "CI is $run on $GITHUB_SHA; waiting..."
+            sleep 30
+          done
+          echo "::error::CI did not finish within 30 minutes on ${GITHUB_SHA}."
+          exit 1
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: tools/pluginctl/go.mod
+          cache-dependency-path: tools/pluginctl/go.sum
+
+      - name: The version is the next one
+        id: version
+        env:
+          ID: ${{ inputs.plugin }}
+        run: |
+          set -eu
+          printf '%s\n' "$ID" | grep -Eq '^[a-z][a-z0-9]*(-[a-z0-9]+)*$' || { echo "::error::'$ID' is not a plugin id"; exit 1; }
+          [ -f "plugins/$ID/plugin.yaml" ] || { echo "::error::there is no plugins/$ID/plugin.yaml on main"; exit 1; }
+          version=$(sed -n 's/^version:[[:space:]]*//p' "plugins/$ID/plugin.yaml" | head -n 1)
+          (cd tools/pluginctl && go build -o "$RUNNER_TEMP/pluginctl" .)
+          "$RUNNER_TEMP/pluginctl" check -release "$version" "plugins/$ID"
+          git tag -l "plugin/$ID/v*" | sh scripts/plugin-version.sh check "$ID" "$version"
+          echo "tag=plugin/$ID/v$version" >>"$GITHUB_OUTPUT"
+          echo "Releasing plugin/$ID/v$version from ${GITHUB_SHA}" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Tag the commit
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "refs/tags/$TAG"
+
+      # A tag pushed with the workflow token does not start other workflows,
+      # so the release workflow is started explicitly, on the tag.
+      - name: Start the release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh workflow run release-plugin.yml --ref "$TAG"
+          echo "Release workflow started on $TAG: https://github.com/$GITHUB_REPOSITORY/actions/workflows/release-plugin.yml" >>"$GITHUB_STEP_SUMMARY"

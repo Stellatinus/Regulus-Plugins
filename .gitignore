@@ -1,0 +1,7 @@
+# Packages and checksums written by scripts/package-plugin.sh
+dist/
+# The tool, when built in place
+/pluginctl
+/tools/pluginctl/pluginctl
+# What a plugin's build leaves behind
+plugins/*/bin/

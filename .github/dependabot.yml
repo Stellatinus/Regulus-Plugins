@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Keeps the actions pinned to a commit current (scripts/pin-actions.sh says
+  # how they are pinned; Dependabot understands the `# tag` comment).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /tools/pluginctl
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns: ["*"]
