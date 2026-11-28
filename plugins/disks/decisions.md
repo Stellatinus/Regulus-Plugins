@@ -28,3 +28,6 @@ Decisions about this plugin only. Decisions about every plugin are in [`docs/dec
 
 ### Version `0.1.0-alpha.1`, an alpha first (2026-11-26)
 **Decision:** the first release is an alpha, offered only to hubs that follow `alpha`, installed from the store. **Why:** it has never run on a real hub.
+
+### Cards as in design v3.2, with only the numbers the hub has (2026-11-28, Regulus#497)
+**Decision:** each disk is a card like the one in the maintainer's `regulus-console-v3.2.html` (device and interface, model, serial, state, then a row of numbers). The numbers are the ones the hub reports: size, first and last seen, and the identity key. The design's used space, temperature, wear, hours, reallocated sectors, health and its three test buttons are **not** drawn, and one note says why. **Why:** the design uses example data; the hub has no S.M.A.R.T. history (Regulus#149), the used space of a *filesystem* is not the use of a *disk*, and a test needs a command to a node, which Regulus cannot send. Showing a value that is not real would be worse than showing less. **Consequence:** when #149 lands the card gets its four boxes and the note goes; the buttons wait for node commands. The tab order (here between General and SSH terminal, as Regulus#497 says; v3.2 draws it last) is the core's decision, not this plugin's.

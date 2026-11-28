@@ -47,6 +47,13 @@ export const TEXTS = {
     "column.size": "Size",
     "column.identity": "Identity",
     "column.state": "State",
+    "count.one": "1 disk reported",
+    "count.other": "{count} disks reported",
+    "card.serial": "ID / serial",
+    "card.firstSeen": "First seen",
+    "card.lastSeen": "Last seen",
+    "smart.title": "S.M.A.R.T.",
+    "smart.body": "Health, temperature, wear and hours of use need S.M.A.R.T. data that the agent does not collect yet (Regulus#149), so nothing is shown for them rather than an invented value. The tests (short, extended, integrity) wait for commands to nodes, which Regulus does not have yet.",
     "kind.wwn": "WWN",
     "kind.eui64": "EUI-64",
     "kind.nguid": "NGUID",
@@ -86,6 +93,13 @@ export const TEXTS = {
     "column.size": "Dimensione",
     "column.identity": "Identità",
     "column.state": "Stato",
+    "count.one": "1 disco segnalato",
+    "count.other": "{count} dischi segnalati",
+    "card.serial": "ID / seriale",
+    "card.firstSeen": "Visto la prima volta",
+    "card.lastSeen": "Visto l'ultima volta",
+    "smart.title": "S.M.A.R.T.",
+    "smart.body": "Salute, temperatura, usura e ore di funzionamento richiedono dati S.M.A.R.T. che l'agente non raccoglie ancora (Regulus#149): per questo non si mostra nulla invece di un valore inventato. I test (rapido, esteso, integrità) aspettano i comandi ai nodi, che Regulus non ha ancora.",
     "kind.wwn": "WWN",
     "kind.eui64": "EUI-64",
     "kind.nguid": "NGUID",
@@ -173,36 +187,62 @@ function section(state, title, body) {
   return h("section", { class: "panel" }, h("h3", {}, title), ...body);
 }
 
-function diskRow(state, disk) {
+// One disk as a card, as design v3.2 draws it (docs/design-system/regulus-console-v3.2.html
+// in Regulus): the device and how it is attached, the model, the serial, the
+// state, and the numbers the hub has. The numbers the design also shows (used
+// space, temperature, wear, hours, reallocated sectors, the test buttons) are
+// not here: the hub has none of them (S.M.A.R.T., Regulus#149).
+function diskCard(state, disk) {
   const L = state.locale;
   const st = diskState(disk, state.node);
-  const stateText = st.vars.reasonKey
-    ? t(L, st.key, { reason: t(L, st.vars.reasonKey) })
-    : t(L, st.key, st.vars);
+  const stateText = st.vars.reasonKey ? t(L, st.key, { reason: t(L, st.vars.reasonKey) }) : t(L, st.key, st.vars);
   const model = [disk.vendor, disk.model].filter(Boolean).join(" ") || "-";
   const kind = KINDS.includes(disk.kind) ? t(L, `kind.${disk.kind}`) : String(disk.kind ?? "");
+  const stat = (label, value) => h("div", { class: "disk-stat" }, h("div", { class: "disk-stat-label" }, label), h("div", { class: "disk-stat-val" }, value));
   return h(
-    "tr",
-    {},
-    h("td", { class: "mono" }, String(disk.device ?? "")),
-    h("td", {}, model),
-    h("td", { class: "mono" }, disk.serial || "-"),
-    h("td", {}, disk.size_bytes ? formatBytes(disk.size_bytes) : "-"),
+    "article",
+    { class: "disk-card" },
     h(
-      "td",
-      {},
-      disk.identifiable
-        ? [h("span", { class: "mono" }, String(disk.key ?? "")), " ", h("span", { class: "muted" }, `(${kind})`)]
-        : "-",
+      "div",
+      { class: "disk-head" },
+      h(
+        "div",
+        {},
+        h("div", { class: "disk-device" }, h("span", { class: "mono strong" }, String(disk.device ?? "")), disk.transport ? h("span", { class: "pill" }, String(disk.transport)) : null),
+        h("div", { class: "disk-model" }, model),
+        h("div", { class: "mono muted small" }, `${t(L, "card.serial")}: ${disk.serial || "-"}`),
+      ),
+      h("span", { class: `status ${st.cls}` }, stateText),
     ),
-    h("td", {}, h("span", { class: `status ${st.cls}` }, stateText)),
+    h(
+      "div",
+      { class: "disk-stats" },
+      stat(t(L, "column.size"), disk.size_bytes ? formatBytes(disk.size_bytes) : "-"),
+      stat(t(L, "card.firstSeen"), disk.first_seen ? formatWhen(disk.first_seen, L) : "-"),
+      stat(t(L, "card.lastSeen"), disk.last_seen ? formatWhen(disk.last_seen, L) : "-"),
+    ),
+    h(
+      "div",
+      { class: "small" },
+      h("span", { class: "muted" }, `${t(L, "column.identity")}: `),
+      disk.identifiable ? [h("span", { class: "mono" }, String(disk.key ?? "")), " ", h("span", { class: "muted" }, `(${kind})`)] : "-",
+    ),
   );
 }
 
-function disksTable(state) {
+function disksGrid(state) {
   const L = state.locale;
-  const heads = ["device", "disk", "serial", "size", "identity", "state"].map((c) => h("th", { scope: "col" }, t(L, `column.${c}`)));
-  return h("table", { class: "cards" }, h("thead", {}, h("tr", {}, ...heads)), h("tbody", {}, ...state.disks.items.map((d) => diskRow(state, d))));
+  const n = state.disks.items.length;
+  return [
+    h("p", { class: "muted mono small" }, n === 1 ? t(L, "count.one") : t(L, "count.other", { count: n })),
+    h("div", { class: "disks-grid" }, ...state.disks.items.map((d) => diskCard(state, d))),
+  ];
+}
+
+// What S.M.A.R.T. will show is drawn in the design; the data does not exist yet.
+function smartNote(state) {
+  const L = state.locale;
+  return h("div", { class: "note", role: "note" }, h("strong", {}, t(L, "smart.title")), h("p", { class: "muted" }, t(L, "smart.body")));
 }
 
 function movesTable(state, mine) {
@@ -232,7 +272,7 @@ export function view(state) {
   else if (d.kind === "forbidden") body.push(h("p", { role: "alert" }, t(L, "forbidden")));
   else if (d.kind === "error") body.push(h("p", { role: "alert" }, t(L, "loadError", { message: d.message })));
   else if (d.items.length === 0) body.push(h("p", {}, t(L, "none")));
-  else body.push(disksTable(state));
+  else body.push(...disksGrid(state), smartNote(state));
 
   const m = state.moves;
   body.push(h("h4", {}, t(L, "moves.title")));
@@ -377,6 +417,16 @@ h3 { font-size: 15px; margin: 4px 0 6px; } h4 { font-size: 13px; margin: 18px 0 
 p { margin: 6px 0; } .muted { color: var(--muted, #98a0b3); }
 .mono { font-family: var(--f-mono, ui-monospace, monospace); font-size: 12.5px; word-break: break-all; }
 table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+.small { font-size: 12px; } .strong { font-weight: 700; font-size: 14.5px; }
+.disks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin: 8px 0; }
+.disk-card { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--line, #2a2f3d); border-radius: 14px; background: var(--surface, transparent); }
+.disk-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.disk-device { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .disk-model { margin-top: 3px; color: var(--muted, #98a0b3); }
+.pill { padding: 0 8px; border-radius: 999px; border: 1px solid var(--line, #2a2f3d); font-size: 11.5px; color: var(--muted, #98a0b3); }
+.disk-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.disk-stat { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, #2a2f3d); }
+.disk-stat-label { font-size: 11px; color: var(--muted, #98a0b3); } .disk-stat-val { font-size: 13px; margin-top: 2px; word-break: break-word; }
+.note { margin: 12px 0; padding: 10px 12px; border: 1px dashed var(--line, #2a2f3d); border-radius: 12px; } .note p { margin: 4px 0 0; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line, #2a2f3d); vertical-align: top; }
 th { font-weight: 600; color: var(--muted, #98a0b3); font-size: 12px; }
 .status { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--sev, var(--line, #2a2f3d)); color: var(--sev, var(--ink, #e6e8ee)); }
