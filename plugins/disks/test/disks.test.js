@@ -50,6 +50,27 @@ test("the view shows device, disk, serial, size, identity, kind and state", () =
   for (const want of ["sda", "ATA ST4000VN008", "ZA1ABC23", "3.6 TiB", "wwn:5000c500a1b2c3d4", "(WWN)", "present"]) assert.ok(out.includes(want), want);
 });
 
+test("each disk is a card as design v3.2 draws it, with the numbers the hub has", () => {
+  const st = ready({ disks: { kind: "ready", items: [disk({ transport: "sata", first_seen: "2026-11-01T10:00:00Z", last_seen: "2026-11-28T10:00:00Z" }), disk({ device: "nvme0n1", serial: "S2", key: "wwn:2" })], message: "" } });
+  const out = html(view(st));
+  assert.equal(out.split('class="disk-card"').length - 1, 2);
+  assert.ok(out.includes("2 disks reported"));
+  for (const want of ["sata", "ID / serial: ZA1ABC23", "First seen", "Last seen", "3.6 TiB"]) assert.ok(out.includes(want), want);
+  assert.ok(html(view(ready())).includes("1 disk reported"));
+  assert.ok(html(view(ready({ locale: "it" }))).includes("1 disco segnalato"));
+});
+
+test("nothing the hub does not have is drawn: no temperature, wear, hours, health or test buttons", () => {
+  const out = html(view(ready()));
+  for (const invented of ["°C", "PASSED", "Temp", "Wear", "Hours", "Reallocated", "<button", "Test"]) assert.ok(!out.includes(invented), invented);
+  // One note says why, once, in both languages.
+  assert.equal(out.split('role="note"').length - 1, 1);
+  assert.ok(out.includes("S.M.A.R.T.") && out.includes("Regulus#149"));
+  assert.ok(html(view(ready({ locale: "it" }))).includes("non si mostra nulla invece di un valore inventato"));
+  // No note when there is no disk to talk about.
+  assert.ok(!html(view(ready({ disks: { kind: "ready", items: [], message: "" } }))).includes("S.M.A.R.T."));
+});
+
 test("a disk that is not identifiable shows the reason, in Italian too", () => {
   const st = ready({ locale: "it", disks: { kind: "ready", items: [disk({ identifiable: false, reason: "usb-bridge", key: "slot:n1:sda" })], message: "" } });
   const out = html(view(st));
